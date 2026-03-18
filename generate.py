@@ -8,15 +8,22 @@ import os
 from pathlib import Path
 
 import torch
-from diffusers import FluxPipeline
+from diffusers import FluxPipeline, FluxTransformer2DModel, AutoencoderKL
+from transformers import CLIPTextModel, T5EncoderModel, CLIPTokenizer, T5TokenizerFast
 from PIL import Image
 
 # Model paths (local ComfyUI models)
 MODELS_DIR = Path.home() / "flux-setup" / "ComfyUI" / "models"
 UNET_PATH = MODELS_DIR / "unet" / "flux1-schnell.safetensors"
 VAE_PATH = MODELS_DIR / "vae" / "ae.safetensors"
-CLIP_L_PATH = MODELS_DIR / "clip" / "clip_l.safetensors"
-T5_PATH = MODELS_DIR / "clip" / "t5xxl_fp8_e4m3fn.safetensors"
+
+# HF cache paths (downloaded once, reused forever)
+HF_CACHE = Path.home() / ".cache" / "huggingface" / "hub" / "models--black-forest-labs--FLUX.1-schnell" / "snapshots" / "741f7c3ce8b383c54771c7003378a50191e9efe9"
+TEXT_ENCODER_PATH = HF_CACHE / "text_encoder"
+TEXT_ENCODER_2_PATH = HF_CACHE / "text_encoder_2"
+TOKENIZER_PATH = HF_CACHE / "tokenizer"
+TOKENIZER_2_PATH = HF_CACHE / "tokenizer_2"
+SCHEDULER_PATH = HF_CACHE / "scheduler"
 
 # Default output directory
 OUTPUT_DIR = Path.home() / "Desktop"
@@ -50,13 +57,58 @@ def parse_args():
 
 
 def load_pipeline():
-    """Load the FLUX Schnell pipeline from local files."""
-    print("Loading FLUX Schnell pipeline...")
+    """Load the FLUX Schnell pipeline from local model files."""
+    print("Loading FLUX Schnell pipeline from local files...")
     print(f"  Using device: MPS (Apple Silicon)")
 
-    pipe = FluxPipeline.from_pretrained(
-        "black-forest-labs/FLUX.1-schnell",
+    # Load the transformer (23.8GB) from local file
+    print(f"  Loading transformer from {UNET_PATH.name}...")
+    transformer = FluxTransformer2DModel.from_single_file(
+        str(UNET_PATH),
+        config="black-forest-labs/FLUX.1-schnell",
+        subfolder="transformer",
         torch_dtype=torch.float16,
+    )
+
+    # Load the VAE from local file
+    print(f"  Loading VAE from {VAE_PATH.name}...")
+    vae = AutoencoderKL.from_single_file(
+        str(VAE_PATH),
+        config="black-forest-labs/FLUX.1-schnell",
+        subfolder="vae",
+        torch_dtype=torch.float16,
+    )
+
+    # Load text encoders from HF cache (already downloaded)
+    print(f"  Loading CLIP text encoder...")
+    text_encoder = CLIPTextModel.from_pretrained(
+        str(TEXT_ENCODER_PATH), torch_dtype=torch.float16, local_files_only=True,
+    )
+
+    print(f"  Loading T5 text encoder...")
+    text_encoder_2 = T5EncoderModel.from_pretrained(
+        str(TEXT_ENCODER_2_PATH), torch_dtype=torch.float16, local_files_only=True,
+    )
+
+    # Load tokenizers from HF cache
+    tokenizer = CLIPTokenizer.from_pretrained(str(TOKENIZER_PATH), local_files_only=True)
+    tokenizer_2 = T5TokenizerFast.from_pretrained(str(TOKENIZER_2_PATH), local_files_only=True)
+
+    # Assemble pipeline — everything from local files, zero downloads
+    print("  Assembling pipeline...")
+    from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+    scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+        str(SCHEDULER_PATH), local_files_only=True,
+    )
+
+    pipe = FluxPipeline(
+        transformer=transformer,
+        vae=vae,
+        text_encoder=text_encoder,
+        text_encoder_2=text_encoder_2,
+        tokenizer=tokenizer,
+        tokenizer_2=tokenizer_2,
+        scheduler=scheduler,
     )
     pipe.to("mps")
 
