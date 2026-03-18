@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Model files (too large for git)
+*.safetensors
+*.bin
+*.ckpt
+*.pt
+*.pth
+
+# Output images
+output/
+*.png
+*.jpg
+*.jpeg
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
