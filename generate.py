@@ -148,6 +148,9 @@ def load_pipeline_ip_adapter(scale=0.8):
     transformer.load_state_dict(diffusers_transformer.state_dict(), strict=True)
     transformer = transformer.to(dtype=torch.bfloat16)
     del diffusers_transformer
+    import gc
+    gc.collect()
+    torch.mps.empty_cache()
 
     print("  Building InstantX pipeline...")
     pipe = InstantXFluxPipeline.from_pretrained(
@@ -155,6 +158,8 @@ def load_pipeline_ip_adapter(scale=0.8):
         transformer=transformer,
         torch_dtype=torch.bfloat16,
     )
+    gc.collect()
+    torch.mps.empty_cache()
 
     print(f"  Loading IP-Adapter and SigLIP image encoder...")
     ip_model = IPAdapter(
